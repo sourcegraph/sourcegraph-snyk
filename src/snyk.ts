@@ -1,5 +1,5 @@
 import { combineLatest, EMPTY, from } from 'rxjs'
-import { distinctUntilChanged, filter, map, switchMap } from 'rxjs/operators'
+import { distinctUntilChanged, filter, map, switchMap, tap } from 'rxjs/operators'
 import * as sourcegraph from 'sourcegraph'
 import { ApiOptions, getUserOrgs, listAggregatedProjectIssues, listAllProjects, Project, ProjectIssues } from './api'
 
@@ -15,7 +15,7 @@ const getConfig = (): Configuration => sourcegraph.configuration.get<Configurati
 export function activate(context: sourcegraph.ExtensionContext): void {
     const panelView = sourcegraph.app.createPanelView('snyk.panel')
     panelView.title = 'Snyk'
-    panelView.content = 'TODO to see audit results'
+    panelView.content = 'Open a file to see the Snyk report'
 
     // Don't show multiple alerts for the same project in the same session
     const shownProjectAlerts = new Set<string>()
@@ -30,6 +30,7 @@ export function activate(context: sourcegraph.ExtensionContext): void {
             from(sourcegraph.configuration).pipe(map(() => getConfig())),
         ])
             .pipe(
+                tap(() => panelView.content = 'Loading...'),
                 switchMap(async ([editor, config]) => {
                     try {
                         // Construct API Options
@@ -40,7 +41,7 @@ export function activate(context: sourcegraph.ExtensionContext): void {
 
                         const apiToken = config['snyk.apiToken']
                         if (!apiToken) {
-                            throw new Error('No Snyk API token found in user settings')
+                            throw new NoApiTokenError()
                         }
 
                         const snykBaseUrl = new URL('https://snyk.io/')
@@ -85,11 +86,9 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                         // Get the closest project to this file in this repo
                         const closestProject = getClosestProject(shortRepoName, filePath, allProjects.projects)
 
-                        const userAlreadyNotified = shownProjectAlerts.has(closestProject.name)
-
                         // Problems in big monorepos:
-                        // - Could cause false positives for files of languages unsupported by Snyk, so the closest
-                        // manifest file would be of a different language. Is that a big concern?
+                        // - Could cause false positives for files of languages unsupported by Snyk: the closest
+                        // manifest file would be for a different language.
 
                         if (!closestProject) {
                             throw new NoProjectFoundError(filePath, shortRepoName)
@@ -133,36 +132,40 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                         //     }
                         // }
 
-                        return { projectIssues, userAlreadyNotified, project: closestProject }
+                        return { editor, projectIssues, project: closestProject }
                     } catch (error) {
                         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                         return { error }
                     }
                 })
             )
-            .subscribe(({ projectIssues, userAlreadyNotified, project, error }) => {
+            .subscribe(({ projectIssues, project, editor, error }) => {
                 if (projectIssues && project) {
-                    panelView.content = projectIssuesToMarkdown(project, projectIssues, project?.browseUrl)
+                    panelView.content = projectIssuesToMarkdown(project, projectIssues, project.browseUrl)
 
-                    if (projectIssues.issues.length > 0 && !userAlreadyNotified) {
+                    if (projectIssues.issues.length > 0 && !shownProjectAlerts.has(project.name)) {
                         sourcegraph.app.activeWindow?.showNotification(
                             `Snyk has found issues in the default branch${
                                 project.branch ? ` (${project.branch})` : ''
-                            } of project${
-                                project.name ? ` ${project.name}` : ' '
+                            } of project ${
+                                project.name || editor?.document.uri || ''
                             }. See more info on [Sourcegraph](#tab=snyk.panel)${
                                 project.browseUrl ? ` or [Snyk](${project.browseUrl})` : ''
                             }`,
                             sourcegraph.NotificationType.Warning
                         )
+                        shownProjectAlerts.add(project.name)
                     }
                 } else if (error) {
-                    if (error instanceof NoProjectFoundError || error instanceof OrgNotFoundError) {
-                        console.error(error.message)
+                    if (error instanceof NoApiTokenError) {
                         panelView.content = error.message
+                        throw error
+                    } else if (error instanceof NoProjectFoundError || error instanceof OrgNotFoundError) {
+                        panelView.content = error.message
+                        console.error(error.message)
                     } else {
-                        console.error(error)
                         panelView.content = 'Unknown error fetching issues for this project'
+                        console.error(error)
                     }
                 }
             })
@@ -189,7 +192,6 @@ export function activate(context: sourcegraph.ExtensionContext): void {
 // }
 
 function projectIssuesToMarkdown(project: Project, projectIssues: ProjectIssues, browseUrl?: string): string {
-    // Important: link to browse URL at top if user would prefer Snyk's UI
     if (projectIssues.issues.length === 0) {
         return `No issues found for this project.${browseUrl ? ` [See the full report](${browseUrl})` : ''}`
     }
@@ -269,8 +271,6 @@ function getClosestProject(shortRepoName: string, filePath: string, allProjects:
     return projectsWithManifestPath[deepestAncestorManifest]
 }
 
-// Error types
-
 class NoProjectFoundError extends Error {
     public readonly name = 'NoProjectFoundError'
     constructor(filePath: string, shortRepoName: string) {
@@ -283,6 +283,11 @@ class OrgNotFoundError extends Error {
     constructor(orgId: string) {
         super(`No org with id: ${orgId} has was found`)
     }
+}
+
+class NoApiTokenError extends Error {
+    public readonly name = 'NoApiTokenError'
+    public readonly message = 'No Synk API token found in user settings'
 }
 
 // Sourcegraph extension documentation: https://docs.sourcegraph.com/extensions/authoring
