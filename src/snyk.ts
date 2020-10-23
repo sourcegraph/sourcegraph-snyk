@@ -86,51 +86,11 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                         // Get the closest project to this file in this repo
                         const closestProject = getClosestProject(shortRepoName, filePath, allProjects.projects)
 
-                        // Problems in big monorepos:
-                        // - Could cause false positives for files of languages unsupported by Snyk: the closest
-                        // manifest file would be for a different language.
-
                         if (!closestProject) {
                             throw new NoProjectFoundError(filePath, shortRepoName)
                         }
 
                         const projectIssues = await listAggregatedProjectIssues(orgId, closestProject.id, apiOptions)
-
-                        // TODO: Only decorate lines on latest revision of default branch, since Snyk only monitors the default branch
-                        // https://support.snyk.io/hc/en-us/articles/360001497578-Which-branch-does-Snyk-Monitor
-                        // We should revisit this extension once we have support for uploading org-wide data
-                        // so site-admins can upload Snyk cli test results, through which they can hack together
-                        // branch support.
-
-                        // const isDefaultBranch = await getIsDefaultBranch(commitID, fullRepoName)
-
-                        // const dependencyNames: string[] = []
-                        // const dependencyIndex: Record<string, number | undefined> = {}
-                        // if (isDefaultBranch) {
-                        //     // Merge patterns (predefined + user-defined)
-                        //     const mergedImportPatterns = mergeImportPatterns(
-                        //         predefinedPatterns,
-                        //         config['snyk.importPatterns']
-                        //     )
-                        //     console.log('merged imppats', mergedImportPatterns)
-
-                        //     const text = editor.document.text ?? ''
-                        //     let match: RegExpExecArray | null = null
-
-                        //     const patterns = mergedImportPatterns[editor.document.languageId]
-                        //     if (patterns) {
-                        //         for (let { pattern, matchIndex } of patterns) {
-                        //             if (typeof pattern === 'string') {
-                        //                 pattern = new RegExp(pattern)
-                        //             }
-                        //             while ((match = pattern.exec(text))) {
-                        //                 const name = match[matchIndex]
-                        //                 dependencyNames.push(name)
-                        //                 dependencyIndex[name] = match.index
-                        //             }
-                        //         }
-                        //     }
-                        // }
 
                         return { editor, projectIssues, project: closestProject }
                     } catch (error) {
@@ -171,25 +131,6 @@ export function activate(context: sourcegraph.ExtensionContext): void {
             })
     )
 }
-
-// function mergeImportPatterns(
-//     predefinedPatterns: ImportPatternsByLanguage,
-//     userDefinedPatterns?: ImportPatternsByLanguage
-// ): ImportPatternsByLanguage {
-//     if (!userDefinedPatterns) {
-//         return predefinedPatterns
-//     }
-
-//     return deepmerge(predefinedPatterns, userDefinedPatterns)
-// }
-
-// async function getIsDefaultBranch(commitID: string, fullRepoName: string): Promise<boolean> {
-//     try {
-//         return false
-//     } catch {
-//         return false
-//     }
-// }
 
 function projectIssuesToMarkdown(project: Project, projectIssues: ProjectIssues, browseUrl?: string): string {
     if (projectIssues.issues.length === 0) {
