@@ -38,11 +38,11 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                                 'https://cors-anywhere.herokuapp.com') + '/'
                         )
 
-                        console.log(config)
                         const apiToken = config['snyk.apiToken']
                         if (!apiToken) {
-                            throw new Error('TODO no API token')
+                            throw new Error('No Snyk API token found in user settings')
                         }
+
                         const snykBaseUrl = new URL('https://snyk.io/')
                         const apiOptions: ApiOptions = {
                             snykApiUrl: new URL(
@@ -50,6 +50,7 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                             ),
                             apiToken,
                         }
+
                         panelView.content = 'Loading...'
                         const uri = new URL(editor.document.uri)
                         const shortRepoName = decodeURIComponent(uri.pathname).replace(/^\//, '')
@@ -65,10 +66,10 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                         }
 
                         const organizationKeyTemplate = config['snyk.organizationKeyTemplate'] ?? '$1'
-                        const orgId = organizationKeyTemplate.replace(/\$(\d)/g, (substring, number: string) => {
-                            console.log({ substring, number, repositoryNameMatch })
-                            return repositoryNameMatch[+number]
-                        })
+                        const orgId = organizationKeyTemplate.replace(
+                            /\$(\d)/g,
+                            (_substring, number: string) => repositoryNameMatch[+number]
+                        )
 
                         // Get list of orgs that this user is part of
                         const orgsList = await getUserOrgs(apiOptions)
@@ -83,10 +84,6 @@ export function activate(context: sourcegraph.ExtensionContext): void {
 
                         // Get the closest project to this file in this repo
                         const closestProject = getClosestProject(shortRepoName, filePath, allProjects.projects)
-                        console.log({
-                            allProjects,
-                            closestProject,
-                        })
 
                         const userAlreadyNotified = shownProjectAlerts.has(closestProject.name)
 
@@ -99,7 +96,6 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                         }
 
                         const projectIssues = await listAggregatedProjectIssues(orgId, closestProject.id, apiOptions)
-                        console.log('projectIssues', projectIssues)
 
                         // TODO: Only decorate lines on latest revision of default branch, since Snyk only monitors the default branch
                         // https://support.snyk.io/hc/en-us/articles/360001497578-Which-branch-does-Snyk-Monitor
@@ -146,7 +142,7 @@ export function activate(context: sourcegraph.ExtensionContext): void {
             )
             .subscribe(({ projectIssues, userAlreadyNotified, project, error }) => {
                 if (projectIssues && project) {
-                    panelView.content = projectIssuesToMarkdown(projectIssues, project?.browseUrl)
+                    panelView.content = projectIssuesToMarkdown(project, projectIssues, project?.browseUrl)
 
                     if (projectIssues.issues.length > 0 && !userAlreadyNotified) {
                         sourcegraph.app.activeWindow?.showNotification(
@@ -166,7 +162,7 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                         panelView.content = error.message
                     } else {
                         console.error(error)
-                        panelView.content = 'Unknown error fetching issues for this file'
+                        panelView.content = 'Unknown error fetching issues for this project'
                     }
                 }
             })
@@ -192,17 +188,30 @@ export function activate(context: sourcegraph.ExtensionContext): void {
 //     }
 // }
 
-function projectIssuesToMarkdown(projectIssues: ProjectIssues, browseUrl?: string): string {
+function projectIssuesToMarkdown(project: Project, projectIssues: ProjectIssues, browseUrl?: string): string {
     // Important: link to browse URL at top if user would prefer Snyk's UI
     if (projectIssues.issues.length === 0) {
         return `No issues found for this project.${browseUrl ? ` [See the full report](${browseUrl})` : ''}`
     }
 
-    // Collapsible issues are nice... see if our markdown renderer can handle it (2 new lines after summary elem)
+    let markdownString = ''
 
-    // Check
+    markdownString += `### Issues found in ${project.name}` // TODO project name in title
+    if (browseUrl) {
+        markdownString += ` [(Read full report on Snyk)](${browseUrl})`
+    }
+    markdownString += '\n'
 
-    return 'you gotta lotta issues'
+    for (const issue of projectIssues.issues) {
+        console.log('issue', issue)
+        markdownString += `\n\n#### [${issue.issueData.title}](${issue.issueData.url})\n- dependency: ${
+            issue.pkgName
+        }, version${issue.pkgVersions.length > 1 ? 's' : ''} ${issue.pkgVersions.join(', ')}\n- severity: ${
+            issue.issueData.severity
+        }\n\n`
+    }
+
+    return markdownString
 }
 
 function getClosestProject(shortRepoName: string, filePath: string, allProjects: Project[]): Project {
@@ -224,12 +233,10 @@ function getClosestProject(shortRepoName: string, filePath: string, allProjects:
 
     // construct file tree
     for (const [projectIndex, { manifestFilePath }] of projectsWithManifestPath.entries()) {
-        // TODO why
         if (manifestFilePath === undefined) {
             continue
         }
         const pathComponents = manifestFilePath.split('/')
-        // No leading slashes AFAIK
         let cwd = fileTree.root
         for (const [componentIndex, component] of pathComponents.entries()) {
             // Last component, so this is a file
@@ -263,13 +270,6 @@ function getClosestProject(shortRepoName: string, filePath: string, allProjects:
 }
 
 // Error types
-
-class UserAlreadyNotifiedError extends Error {
-    public readonly name = 'UserAlreadyNotifiedError'
-    constructor(projectName: string) {
-        super(`User has already been notified that project: ${projectName} has vulnerabilities`)
-    }
-}
 
 class NoProjectFoundError extends Error {
     public readonly name = 'NoProjectFoundError'
