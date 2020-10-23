@@ -39,6 +39,21 @@
         "description": "The URL to a CORS proxy.",
         "type": "string",
         "default": "https://cors-anywhere.herokuapp.com"
+      },
+      "snyk.apiToken": {
+        "description": "A Snyk API token",
+        "type": "string"
+      },
+      "snyk.repositoryNamePattern": {
+        "description": "Regular expression with that is matched on the repository name to extract the capture groups for organization and project key templates.",
+        "type": "string",
+        "format": "regex",
+        "default": "(?:^|/)([^/]+)/([^/]+)$"
+      },
+      "snyk.organizationKeyTemplate": {
+        "description": "Replace string to build the organization key from the repository name pattern, using $n references for capture groups. By default just uses the first capture group",
+        "type": "string",
+        "default": "$1"
       }
     }
   },
