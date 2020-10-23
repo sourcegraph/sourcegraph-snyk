@@ -216,7 +216,7 @@ function projectIssuesToMarkdown(project: Project, projectIssues: ProjectIssues,
     return markdownString
 }
 
-function getClosestProject(shortRepoName: string, filePath: string, allProjects: Project[]): Project {
+export function getClosestProject(shortRepoName: string, filePath: string, allProjects: Project[]): Project {
     // filter out projects wihout same repo name
     const projects = allProjects.filter(({ name }) => name.includes(shortRepoName))
 
