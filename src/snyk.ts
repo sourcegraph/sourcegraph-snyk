@@ -137,23 +137,26 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                         //     }
                         // }
 
-                        return { projectIssues, userAlreadyNotified, browseUrl: closestProject.browseUrl }
+                        return { projectIssues, userAlreadyNotified, project: closestProject }
                     } catch (error) {
                         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                         return { error }
                     }
                 })
             )
-            .subscribe(({ projectIssues, userAlreadyNotified, browseUrl, error }) => {
-                // Panel content
-                // const markdownString = auditResponseToMarkdown(auditResponse, moduleNames)
-                // panelView.content = markdownString
-                if (projectIssues) {
-                    panelView.content = projectIssuesToMarkdown(projectIssues, browseUrl)
+            .subscribe(({ projectIssues, userAlreadyNotified, project, error }) => {
+                if (projectIssues && project) {
+                    panelView.content = projectIssuesToMarkdown(projectIssues, project?.browseUrl)
 
                     if (projectIssues.issues.length > 0 && !userAlreadyNotified) {
                         sourcegraph.app.activeWindow?.showNotification(
-                            'Snyk has found issues in the default branch () of your project. [See more info](#tab=snyk.panel)',
+                            `Snyk has found issues in the default branch${
+                                project.branch ? ` (${project.branch})` : ''
+                            } of project${
+                                project.name ? ` ${project.name}` : ' '
+                            }. See more info on [Sourcegraph](#tab=snyk.panel)${
+                                project.browseUrl ? ` or [Snyk](${project.browseUrl})` : ''
+                            }`,
                             sourcegraph.NotificationType.Warning
                         )
                     }
