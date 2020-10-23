@@ -30,7 +30,7 @@ export function activate(context: sourcegraph.ExtensionContext): void {
             from(sourcegraph.configuration).pipe(map(() => getConfig())),
         ])
             .pipe(
-                tap(() => panelView.content = 'Loading...'),
+                tap(() => (panelView.content = 'Loading...')),
                 switchMap(async ([editor, config]) => {
                     try {
                         // Construct API Options
@@ -57,7 +57,7 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                         const shortRepoName = decodeURIComponent(uri.pathname).replace(/^\//, '')
                         const filePath = decodeURIComponent(uri.hash.slice(1))
 
-                        const repositoryNamePattern = '(?:^|/)([^/]+)/([^/]+)$'
+                        const repositoryNamePattern = config['snyk.repositoryNamePattern'] || '(?:^|/)([^/]+)/([^/]+)$'
                         const repositoryNameMatch = shortRepoName.match(repositoryNamePattern)
 
                         if (!repositoryNameMatch) {
@@ -139,7 +139,7 @@ function projectIssuesToMarkdown(project: Project, projectIssues: ProjectIssues,
 
     let markdownString = ''
 
-    markdownString += `### Issues found in ${project.name}` // TODO project name in title
+    markdownString += `### Issues found in ${project.name}`
     if (browseUrl) {
         markdownString += ` [(Read full report on Snyk)](${browseUrl})`
     }
