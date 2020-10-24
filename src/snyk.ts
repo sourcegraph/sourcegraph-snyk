@@ -157,11 +157,15 @@ function projectIssuesToMarkdown(project: Project, projectIssues: ProjectIssues,
     return markdownString
 }
 
-export function getClosestProject(shortRepoName: string, filePath: string, allProjects: Project[]): Project {
+export function getClosestProject(
+    shortRepoName: string,
+    filePath: string,
+    allProjects: Project[]
+): Project & { manifestFilePath: string } {
     // filter out projects wihout same repo name
     const projects = allProjects.filter(({ name }) => name.includes(shortRepoName))
 
-    // get manifest file paths (maintain reference to project somehow.. id?)
+    // get manifest file paths
     const projectsWithManifestPath = projects.map(project => ({
         ...project,
         manifestFilePath: project.name.split(shortRepoName)[1]?.replace(/^:/, ''),
