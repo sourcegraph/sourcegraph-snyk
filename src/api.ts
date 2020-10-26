@@ -56,7 +56,7 @@ export interface Issue {
         title: string
         severity: 'low' | 'medium' | 'high'
         url: string
-        description: string
+        description?: string
         identifiers: {
             CVE: string[]
             CWE: string[]

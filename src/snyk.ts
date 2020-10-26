@@ -55,7 +55,7 @@ export function activate(context: sourcegraph.ExtensionContext): void {
                     }
 
                     return {
-                        title: `Snyk Report for ${project.name}`,
+                        title: `Snyk report for ${project.name}`,
                         subtitle: `Issues by severity on the default branch (${project.branch})`,
                         content: [
                             {
@@ -226,7 +226,8 @@ function projectIssuesToMarkdown(project: Project, projectIssues: ProjectIssues)
     markdownString += '\n'
 
     for (const issue of projectIssues.issues) {
-        markdownString += `\n\n#### [${issue.issueData.title}](${issue.issueData.url})\n- dependency: ${
+        console.log(issue)
+        markdownString += `\n\n#### [${issue.issueData.title}](${issue.issueData.url}) (Priority Score: ${issue.priority.score})\n- dependency: ${
             issue.pkgName
         }, version${issue.pkgVersions.length > 1 ? 's' : ''} ${issue.pkgVersions.join(', ')}\n- severity: ${
             issue.issueData.severity
