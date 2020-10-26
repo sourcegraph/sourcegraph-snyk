@@ -1,5 +1,8 @@
 # Snyk Sourcegraph extension
 
+Provides code insights from Snyk reports.
+
+**Status**: beta
 
 ### Code Insight
 
