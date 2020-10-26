@@ -7,7 +7,7 @@
     "*"
   ],
   "wip": true,
-  "categories": [],
+  "categories": ["External services"],
   "tags": [],
   "contributes": {
     "actions": [
