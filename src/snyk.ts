@@ -3,20 +3,91 @@ import { distinctUntilChanged, filter, map, switchMap, tap } from 'rxjs/operator
 import * as sourcegraph from 'sourcegraph'
 import { ApiOptions, getUserOrgs, listAggregatedProjectIssues, listAllProjects, Project, ProjectIssues } from './api'
 
-interface Configuration {
+export interface Configuration {
     'snyk.corsAnywhereUrl'?: string
     'snyk.apiToken'?: string
     'snyk.repositoryNamePattern'?: string
     'snyk.organizationKeyTemplate'?: string
+    'snyk.showNotifications'?: boolean
 }
 
 const getConfig = (): Configuration => sourcegraph.configuration.get<Configuration>().value
 
 export function activate(context: sourcegraph.ExtensionContext): void {
+    context.subscriptions.add(
+        sourcegraph.app.registerViewProvider('snyk.directory', {
+            where: 'directory',
+            provideView: async directoryViewContext => {
+                try {
+                    const config = getConfig()
+
+                    const relativePath = directoryViewContext.viewer.directory.uri.hash.replace(/^#/, '')
+                    const shortRepoName = directoryViewContext.viewer.directory.uri.pathname.replace(/^\//, '')
+
+                    const { project } = await getSnykReport(shortRepoName, relativePath, config)
+
+                    const severityData = [
+                        {
+                            severity: 'Low',
+                            issueCount: project.issueCountsBySeverity.low,
+                            fill: 'teal',
+                        },
+                        {
+                            severity: 'Medium',
+                            issueCount: project.issueCountsBySeverity.medium,
+                            fill: 'orange',
+                        },
+                        {
+                            severity: 'High',
+                            issueCount: project.issueCountsBySeverity.high,
+                            fill: 'red',
+                        },
+                    ]
+
+                    const barChartBySeverity: sourcegraph.BarChartContent<typeof severityData[number], 'severity'> = {
+                        chart: 'bar',
+                        data: severityData,
+                        series: [{ dataKey: 'issueCount', name: 'Issue Count' }],
+                        xAxis: {
+                            dataKey: 'severity',
+                            type: 'category',
+                        },
+                    }
+
+                    return {
+                        title: `Snyk Report for ${project.name}`,
+                        subtitle: `Issues by severity on the default branch (${project.branch})`,
+                        content: [
+                            {
+                                value: project.browseUrl ? `[View full report on Snyk](${project.browseUrl})` : '',
+                                kind: sourcegraph.MarkupKind.Markdown,
+                            },
+                            barChartBySeverity,
+                        ],
+                    }
+                } catch (error) {
+                    console.error('Uncaught error fetching Snyk report:', error)
+                    return {
+                        title: 'Error fetching Snyk report',
+                        subtitle: 'Check the console for more details',
+                        content: [
+                            {
+                                value: '',
+                                kind: sourcegraph.MarkupKind.Markdown,
+                            },
+                        ],
+                    }
+                }
+            },
+        })
+    )
+
+    // While code insights are experimental, keep notification -> panel view flow as an optional feature.
+    // Users can opt in by setting 'snyk.showNotifications' to true.
+
     const panelView = sourcegraph.app.createPanelView('snyk.panel')
     panelView.title = 'Snyk'
     panelView.content = 'Open a file to see the Snyk report'
-
     // Don't show multiple alerts for the same project in the same session
     const shownProjectAlerts = new Set<string>()
 
@@ -30,69 +101,17 @@ export function activate(context: sourcegraph.ExtensionContext): void {
             from(sourcegraph.configuration).pipe(map(() => getConfig())),
         ])
             .pipe(
+                filter(([, config]) => !!config['snyk.showNotifications']),
                 tap(() => (panelView.content = 'Loading...')),
                 switchMap(async ([editor, config]) => {
                     try {
-                        // Construct API Options
-                        const corsAnywhereUrl = new URL(
-                            (config['snyk.corsAnywhereUrl']?.replace(/\/$/, '') ||
-                                'https://cors-anywhere.herokuapp.com') + '/'
-                        )
-
-                        const apiToken = config['snyk.apiToken']
-                        if (!apiToken) {
-                            throw new NoApiTokenError()
-                        }
-
-                        const snykBaseUrl = new URL('https://snyk.io/')
-                        const apiOptions: ApiOptions = {
-                            snykApiUrl: new URL(
-                                `${corsAnywhereUrl.href.replace(/\/$/, '')}/${snykBaseUrl.href.replace(/\/$/, '')}/`
-                            ),
-                            apiToken,
-                        }
-
-                        panelView.content = 'Loading...'
                         const uri = new URL(editor.document.uri)
                         const shortRepoName = decodeURIComponent(uri.pathname).replace(/^\//, '')
                         const filePath = decodeURIComponent(uri.hash.slice(1))
 
-                        const repositoryNamePattern = config['snyk.repositoryNamePattern'] || '(?:^|/)([^/]+)/([^/]+)$'
-                        const repositoryNameMatch = shortRepoName.match(repositoryNamePattern)
+                        const { projectIssues, project } = await getSnykReport(shortRepoName, filePath, config)
 
-                        if (!repositoryNameMatch) {
-                            throw new Error(
-                                `repositoryNamePattern ${repositoryNamePattern.toString()} did not match repository name ${shortRepoName}`
-                            )
-                        }
-
-                        const organizationKeyTemplate = config['snyk.organizationKeyTemplate'] ?? '$1'
-                        const orgId = organizationKeyTemplate.replace(
-                            /\$(\d)/g,
-                            (_substring, number: string) => repositoryNameMatch[+number]
-                        )
-
-                        // Get list of orgs that this user is part of
-                        const orgsList = await getUserOrgs(apiOptions)
-                        const org = orgsList.orgs.find(({ name }) => name === orgId)
-
-                        if (!org) {
-                            throw new OrgNotFoundError(orgId)
-                        }
-
-                        // Check if Snyk has info for this project. We need this step because shortRepoName is not a valid project ID
-                        const allProjects = await listAllProjects({ orgId, options: apiOptions })
-
-                        // Get the closest project to this file in this repo
-                        const closestProject = getClosestProject(shortRepoName, filePath, allProjects.projects)
-
-                        if (!closestProject) {
-                            throw new NoProjectFoundError(filePath, shortRepoName)
-                        }
-
-                        const projectIssues = await listAggregatedProjectIssues(orgId, closestProject.id, apiOptions)
-
-                        return { editor, projectIssues, project: closestProject }
+                        return { editor, projectIssues, project }
                     } catch (error) {
                         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                         return { error }
@@ -101,7 +120,7 @@ export function activate(context: sourcegraph.ExtensionContext): void {
             )
             .subscribe(({ projectIssues, project, editor, error }) => {
                 if (projectIssues && project) {
-                    panelView.content = projectIssuesToMarkdown(project, projectIssues, project.browseUrl)
+                    panelView.content = projectIssuesToMarkdown(project, projectIssues)
 
                     if (projectIssues.issues.length > 0 && !shownProjectAlerts.has(project.name)) {
                         sourcegraph.app.activeWindow?.showNotification(
@@ -132,21 +151,81 @@ export function activate(context: sourcegraph.ExtensionContext): void {
     )
 }
 
-function projectIssuesToMarkdown(project: Project, projectIssues: ProjectIssues, browseUrl?: string): string {
+async function getSnykReport(
+    shortRepoName: string,
+    filePath: string,
+    config: Configuration
+): Promise<{ projectIssues: ProjectIssues; project: Project }> {
+    // Construct API Options
+    const corsAnywhereUrl = new URL(
+        (config['snyk.corsAnywhereUrl']?.replace(/\/$/, '') || 'https://cors-anywhere.herokuapp.com') + '/'
+    )
+
+    const apiToken = config['snyk.apiToken']
+    if (!apiToken) {
+        throw new NoApiTokenError()
+    }
+
+    const snykBaseUrl = new URL('https://snyk.io/')
+    const apiOptions: ApiOptions = {
+        snykApiUrl: new URL(`${corsAnywhereUrl.href.replace(/\/$/, '')}/${snykBaseUrl.href.replace(/\/$/, '')}/`),
+        apiToken,
+    }
+
+    const repositoryNamePattern = config['snyk.repositoryNamePattern'] || '(?:^|/)([^/]+)/([^/]+)$'
+    const repositoryNameMatch = shortRepoName.match(repositoryNamePattern)
+
+    if (!repositoryNameMatch) {
+        throw new Error(
+            `repositoryNamePattern ${repositoryNamePattern.toString()} did not match repository name ${shortRepoName}`
+        )
+    }
+
+    const organizationKeyTemplate = config['snyk.organizationKeyTemplate'] ?? '$1'
+    const orgId = organizationKeyTemplate.replace(
+        /\$(\d)/g,
+        (_substring, number: string) => repositoryNameMatch[+number]
+    )
+
+    // Get list of orgs that this user is part of
+    const orgsList = await getUserOrgs(apiOptions)
+    const org = orgsList.orgs.find(({ name }) => name === orgId)
+
+    if (!org) {
+        throw new OrgNotFoundError(orgId)
+    }
+
+    // Check if Snyk has info for this project. We need this step because shortRepoName is not a valid project ID
+    const allProjects = await listAllProjects({ orgId, options: apiOptions })
+
+    // Get the closest project to this file in this repo
+    const closestProject = getClosestProject(shortRepoName, filePath, allProjects.projects)
+
+    if (!closestProject) {
+        throw new NoProjectFoundError(filePath, shortRepoName)
+    }
+
+    const projectIssues = await listAggregatedProjectIssues(orgId, closestProject.id, apiOptions)
+
+    return { projectIssues, project: closestProject }
+}
+
+function projectIssuesToMarkdown(project: Project, projectIssues: ProjectIssues): string {
     if (projectIssues.issues.length === 0) {
-        return `No issues found for this project.${browseUrl ? ` [See the full report](${browseUrl})` : ''}`
+        return `No issues found for this project.${
+            project.browseUrl ? ` [See the full report](${project.browseUrl})` : ''
+        }`
     }
 
     let markdownString = ''
 
     markdownString += `### Issues found in ${project.name}`
-    if (browseUrl) {
-        markdownString += ` [(Read full report on Snyk)](${browseUrl})`
+    if (project.browseUrl) {
+        markdownString += ` [(Read full report on Snyk)](${project.browseUrl})`
     }
     markdownString += '\n'
 
     for (const issue of projectIssues.issues) {
-        console.log('issue', issue)
         markdownString += `\n\n#### [${issue.issueData.title}](${issue.issueData.url})\n- dependency: ${
             issue.pkgName
         }, version${issue.pkgVersions.length > 1 ? 's' : ''} ${issue.pkgVersions.join(', ')}\n- severity: ${
@@ -200,9 +279,10 @@ export function getClosestProject(
     }
 
     // find lowest ancestor manifest
-    let deepestAncestorManifest = 0
     let cwd: Tree | undefined = fileTree.root
+    let deepestAncestorManifest = fileTree.root.manifest?.projectIndex ?? 0
     for (const component of filePath.split('/')) {
+        cwd = cwd.trees[component]
         if (!cwd) {
             break
         }
@@ -210,7 +290,6 @@ export function getClosestProject(
         if (maybeManifest) {
             deepestAncestorManifest = maybeManifest.projectIndex
         }
-        cwd = cwd.trees[component]
     }
 
     return projectsWithManifestPath[deepestAncestorManifest]

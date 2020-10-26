@@ -21,7 +21,7 @@
         "title": "Show panel",
         "actionItem": {
           "label": "Snyk",
-          "description": "See TODO"
+          "description": "See issues from the current project"
         }
       }
     ],
@@ -43,6 +43,10 @@
       "snyk.apiToken": {
         "description": "A Snyk API token",
         "type": "string"
+      },
+      "snyk.showNotifications": {
+        "description": "Whether to show notifications when Snyk has found issues in the current project",
+        "type": "boolean"
       },
       "snyk.repositoryNamePattern": {
         "description": "Regular expression with that is matched on the repository name to extract the capture groups for organization and project key templates.",

@@ -46,7 +46,6 @@ export interface ProjectIssues {
     issues: Issue[]
 }
 
-// TODO narrow types.
 export interface Issue {
     id: string
     issueType: string
@@ -55,7 +54,7 @@ export interface Issue {
     issueData: {
         id: string
         title: string
-        severity: string
+        severity: 'low' | 'medium' | 'high'
         url: string
         description: string
         identifiers: {
@@ -93,8 +92,7 @@ async function fetchApi(path: string, options: ApiOptions, init?: RequestInit): 
     headers.set('Authorization', 'token ' + options.apiToken)
     const response = await fetch(url.href, { headers, ...init })
     if (!response.ok) {
-        console.log(response)
-        throw new Error('TODO')
+        throw new Error(response.statusText)
     }
     const result = await response.json()
     return result
@@ -112,7 +110,11 @@ export async function listAggregatedProjectIssues(
     projectId: string,
     options: ApiOptions
 ): Promise<{ issues: Issue[] }> {
-    return fetchApi(`api/v1/org/${encodeURIComponent(orgId)}/project/${encodeURI(projectId)}/aggregated-issues`, options, { method: 'POST' })
+    return fetchApi(
+        `api/v1/org/${encodeURIComponent(orgId)}/project/${encodeURI(projectId)}/aggregated-issues`,
+        options,
+        { method: 'POST' }
+    )
 }
 
 interface OrgsListResponse {
@@ -143,9 +145,9 @@ function memoizeAsync<P, T>(
         if (hit) {
             return hit
         }
-        const p = func(parameters)
-        p.then(null, () => cache.delete(key))
-        cache.set(key, p)
-        return p
+        const promise = func(parameters)
+        promise.then(null, () => cache.delete(key))
+        cache.set(key, promise)
+        return promise
     }
 }
