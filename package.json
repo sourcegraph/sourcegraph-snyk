@@ -38,7 +38,7 @@
       "snyk.corsAnywhereUrl": {
         "description": "The URL to a CORS proxy.",
         "type": "string",
-        "default": "https://cors-anywhere.herokuapp.com"
+        "default": "https://cors-anywhere.sgdev.org"
       },
       "snyk.apiToken": {
         "description": "A Snyk API token",
