@@ -158,7 +158,7 @@ async function getSnykReport(
 ): Promise<{ projectIssues: ProjectIssues; project: Project }> {
     // Construct API Options
     const corsAnywhereUrl = new URL(
-        (config['snyk.corsAnywhereUrl']?.replace(/\/$/, '') || 'https://cors-anywhere.herokuapp.com') + '/'
+        (config['snyk.corsAnywhereUrl']?.replace(/\/$/, '') || 'https://cors-anywhere.sgdev.org') + '/'
     )
 
     const apiToken = config['snyk.apiToken']
@@ -227,11 +227,11 @@ function projectIssuesToMarkdown(project: Project, projectIssues: ProjectIssues)
 
     for (const issue of projectIssues.issues) {
         console.log(issue)
-        markdownString += `\n\n#### [${issue.issueData.title}](${issue.issueData.url}) (Priority Score: ${issue.priority.score})\n- dependency: ${
-            issue.pkgName
-        }, version${issue.pkgVersions.length > 1 ? 's' : ''} ${issue.pkgVersions.join(', ')}\n- severity: ${
-            issue.issueData.severity
-        }\n\n`
+        markdownString += `\n\n#### [${issue.issueData.title}](${issue.issueData.url}) (Priority Score: ${
+            issue.priority.score
+        })\n- dependency: ${issue.pkgName}, version${issue.pkgVersions.length > 1 ? 's' : ''} ${issue.pkgVersions.join(
+            ', '
+        )}\n- severity: ${issue.issueData.severity}\n\n`
     }
 
     return markdownString

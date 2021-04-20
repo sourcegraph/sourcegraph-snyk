@@ -14,7 +14,6 @@ Provides code insights from Snyk reports.
 </picture>
 </p>
 
-
 ### Notification + Panel View
 
 <p>
@@ -24,8 +23,6 @@ Provides code insights from Snyk reports.
 <img src="https://user-images.githubusercontent.com/37420160/97132290-cf566180-171c-11eb-8914-2c39d58cf593.png" alt="Screenshot">
 </picture>
 </p>
-
-
 
 ## Configuration
 
@@ -54,7 +51,6 @@ The extension can be configured through JSON in user, organization or global set
   // CORS headers are necessary for the extension to fetch data, but Snyk does not send them by default.
   // Here you can customize the URL to an HTTP proxy that adds CORS headers.
   // By default Sourcegraph's CORS proxy is used.
-  "snyk.corsAnywhereUrl": "https://cors-anywhere.herokuapp.com"
+  "snyk.corsAnywhereUrl": "https://cors-anywhere.sgdev.org"
 }
 ```
-
