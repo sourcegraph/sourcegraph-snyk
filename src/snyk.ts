@@ -1,5 +1,4 @@
-import { combineLatest, EMPTY, from } from 'rxjs'
-import { distinctUntilChanged, filter, map, switchMap, tap } from 'rxjs/operators'
+import { combineLatest, distinctUntilChanged, EMPTY, filter, from, map, switchMap, tap } from 'rxjs'
 import * as sourcegraph from 'sourcegraph'
 import { ApiOptions, getUserOrgs, listAggregatedProjectIssues, listAllProjects, Project, ProjectIssues } from './api'
 
