@@ -63,3 +63,5 @@ The extension can be configured through JSON in user, organization or global set
   "snyk.corsAnywhereUrl": "https://cors-anywhere.sgdev.org"
 }
 ```
+
+Hello, world!
